@@ -1,0 +1,116 @@
+version: '3.8'
+
+services:
+  db:
+    image: mariadb:11.3
+    container_name: glpi-db
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      MYSQL_DATABASE: ${MYSQL_DATABASE}
+      MYSQL_USER: ${MYSQL_USER}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
+      MYSQL_INITDB_SKIP_TZINFO: 1
+    volumes:
+      - glpi_db_data:/var/lib/mysql
+      - ./db-config:/etc/mysql/conf.d:ro
+    ports:
+      - "3307:3306"
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      start_period: 10s
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    networks:
+      - glpi-network
+
+  glpi:
+    image: diouxx/glpi:latest
+    container_name: glpi-app
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      GLPI_DB_HOST: db
+      GLPI_DB_PORT: 3306
+      GLPI_DB_NAME: ${MYSQL_DATABASE}
+      GLPI_DB_USER: ${MYSQL_USER}
+      GLPI_DB_PASSWORD: ${MYSQL_PASSWORD}
+      TZ: ${TZ}
+      GLPI_INSTALL: "disallow"
+      GLPI_REINSTALL: "disallow"
+      GLPI_UPGRADE: "allow"
+    ports:
+      - "8090:80"
+    volumes:
+      - glpi_data:/var/www/html
+      - glpi_plugins:/var/www/html/plugins
+      - glpi_marketplace:/var/www/html/marketplace
+      - ./glpi-config:/etc/glpi:ro
+      - ./glpi-files:/var/www/html/files
+      - ./glpi-uploads:/var/www/html/_uploads
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    networks:
+      - glpi-network
+
+  # Optional: phpMyAdmin untuk management database
+  phpmyadmin:
+    image: phpmyadmin/phpmyadmin:latest
+    container_name: glpi-pma
+    restart: unless-stopped
+    depends_on:
+      - db
+    environment:
+      PMA_HOST: db
+      PMA_PORT: 3306
+      PMA_USER: root
+      PMA_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      UPLOAD_LIMIT: 64M
+    ports:
+      - "8088:80"
+    networks:
+      - glpi-network
+
+volumes:
+  glpi_db_data:
+    driver: local
+  glpi_data:
+    driver: local
+  glpi_plugins:
+    driver: local
+  glpi_marketplace:
+    driver: local
+
+networks:
+  glpi-network:
+    driver: bridge
+    name: glpi-network
+
+# Optional: Backup service
+#  backup:
+#    image: prodrigestivill/postgres-backup-local:latest
+#    container_name: glpi-backup
+#    restart: unless-stopped
+#    depends_on:
+#      - db
+#    environment:
+#      POSTGRES_HOST: db
+#      POSTGRES_DB: ${MYSQL_DATABASE}
+#      POSTGRES_USER: root
+#      POSTGRES_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+#      SCHEDULE: "@daily"
+#      BACKUP_KEEP_DAYS: 7
+#      BACKUP_KEEP_WEEKS: 4
+#      BACKUP_KEEP_MONTHS: 6
+#    volumes:
+#      - ./backups:/backups
+#      - /etc/localtime:/etc/localtime:ro
+#    networks:
+#      - glpi-network
