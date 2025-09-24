@@ -17,7 +17,7 @@ pipeline {
                 script {
                     // Pastikan Docker Compose tersedia di agent Jenkins
                     sh 'docker compose down -v'
-                    sh 'docker compose up -d --build'
+                    sh 'docker compose up -d'
                 }
             }
         }
